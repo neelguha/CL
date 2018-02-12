@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package parameters;
+
+message ModelRecord {
+  float loss = 1;
+  repeated Neuron weights = 2;
+}
+
+// Neurons within a layer can be swapped without any effect.
+message Neuron {
+  repeated float weight = 1;
+}
