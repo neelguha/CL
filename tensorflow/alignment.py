@@ -13,12 +13,46 @@ parser.add_argument("--new_model", default=False, action="store_true" , help="Fl
 args = parser.parse_args()
 
 
-def init():
+def sort_data(agent1, agent2, images, labels):
+    """
+    even: [1, 0]
+    odd:  [0, 1]
+    :param agent1: Digits learned by agent 1
+    :param agent2: Digits learned by agent 2
+    :param images:
+    :param labels:
+    :return:
+    """
+    a1_data = []
+    a1_labels = []
+    a2_data = []
+    a2_labels = []
+
+    data = zip(labels, images)
+    for label, image in data:
+        digit = np.argmax(label)
+        even_odd = digit % 2
+        one_hot = np.zeros(2)
+        one_hot[even_odd] = 1.0
+        if digit in agent1:
+            a1_labels.append(one_hot)
+            a1_data.append(image)
+        elif digit in agent2:
+            a2_labels.append(one_hot)
+            a2_data.append(image)
+
+    return Data(np.array(a1_data), np.array(a1_labels)), Data(np.array(a2_data), np.array(a2_labels))
+
+
+def init(agent1, agent2):
     """
     :return: (Train data, test data)
     """
     mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
-    return Data(mnist.train.images, mnist.train.labels), Data(mnist.test.images, mnist.test.labels)
+    a1_train, a2_train = sort_data(agent1, agent2, mnist.train.images, mnist.train.labels)
+    a1_test, a2_test = sort_data(agent1, agent2, mnist.test.images, mnist.test.labels)
+    print "Sorted data."
+    return a1_train, a1_test, a2_train, a2_test
 
 def save_model(model, name):
     """
@@ -43,7 +77,7 @@ def load_model(name):
     w2 = np.load("%s/w2.npy" % output_dir)
     b1 = np.load("%s/b1.npy" % output_dir)
     b2 = np.load("%s/b2.npy" % output_dir)
-    return mnist_logit.MnistLogit(num_neurons=HIDDEN_LAYER_SIZE, w1=w1, w2=w2, b1=b1, b2=b2)
+    return mnist_logit.MnistLogit(num_neurons=HIDDEN_LAYER_SIZE, out_dim=2, w1=w1, w2=w2, b1=b1, b2=b2)
 
 def get_new_random_model(train, test):
     """
@@ -51,7 +85,7 @@ def get_new_random_model(train, test):
     :param test: test data
     :return: returns a model trained on the train data
     """
-    m = mnist_logit.MnistLogit(num_neurons=HIDDEN_LAYER_SIZE)
+    m = mnist_logit.MnistLogit(out_dim=2, num_neurons=HIDDEN_LAYER_SIZE)
     m.train_model(train, test, iters=4000, verbose=False)
     return m
 
@@ -198,23 +232,23 @@ def align_neurons(m_dest, m_source, test):
     return new_model
 
 def main():
-    train, test = init()
+    a1_train, a1_test, a2_train, a2_test = init(agent1=[0, 1, 2, 3], agent2=[4, 5, 6, 7])
     if args.new_model:
-        m1 = get_new_random_model(train, test)
-        m2 = get_new_random_model(train, test)
+        m1 = get_new_random_model(a1_train, a1_test)
+        m2 = get_new_random_model(a2_train, a2_test)
         save_model(m1, "m1")
         save_model(m2, "m2")
     else:
         m1 = load_model("m1")
         m2 = load_model("m2")
     print "M1\t",
-    m1.evaluate(test)
+    m1.evaluate(a1_test)
     print "M2\t",
-    m2.evaluate(test)
+    m2.evaluate(a2_test)
     print
-    baseline_diff(train, test, m1, m2)
+    baseline_diff(a1_train, a1_test, m1, m2)
     print "Realigning models"
-    #realigned_model = align_neurons(m1, m2, test)
+    realigned_model = align_neurons(m1, m2, a1_test)
 
 
 

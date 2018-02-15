@@ -6,14 +6,14 @@ import operator
 
 class MnistLogit:
 
-    def __init__(self, num_neurons, w1 = [], w2 = [], b1 = [], b2 = []):
+    def __init__(self, num_neurons, out_dim = 10, w1 = [], w2 = [], b1 = [], b2 = []):
         self.sess = tf.Session()
 
         in_dim = int(784)  # 784 for MNIST
-        out_dim = int(10)  # 10 for MNIST
+        out_dim = int(out_dim)  # 10 for MNIST
         # Create the model
         self.x = tf.placeholder(tf.float32, [None, 784])  # input placeholder
-        self.y_ = tf.placeholder(tf.float32, [None, 10])
+        self.y_ = tf.placeholder(tf.float32, [None, out_dim])
         self.keep_prob = tf.placeholder(tf.float32)
 
         # simple 2-layer network
