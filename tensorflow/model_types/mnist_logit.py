@@ -6,11 +6,12 @@ import operator
 
 class MnistLogit:
 
+    #TODO: Clean this up
     def __init__(self, num_neurons, out_dim = 10, w1 = [], w2 = [], b1 = [], b2 = []):
         self.sess = tf.Session()
 
         in_dim = int(784)  # 784 for MNIST
-        out_dim = int(out_dim)  # 10 for MNIST
+        self.out_dim = int(out_dim)  # 10 for MNIST
         # Create the model
         self.x = tf.placeholder(tf.float32, [None, 784])  # input placeholder
         self.y_ = tf.placeholder(tf.float32, [None, out_dim])
