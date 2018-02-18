@@ -3,39 +3,10 @@ from sklearn.model_selection import train_test_split
 import os
 
 
-'''
-This is the basic type for all of our data objects
-'''
-class Data:
-    ''' Represents a dataset.'''
-    def __init__(self, images=[], labels=[]):
-        self.images = images
-        self.labels = labels
 
 
-    def add_data(self, new_images, new_labels):
-        if len(self.images) == 0:
-            self.images = new_images
-            self.labels = new_labels
-        else:
-            self.images = np.append(self.images, new_images, axis=0)
-            self.labels = np.append(self.labels, new_labels, axis=0)
 
-    def add_data_obj(self, new_data):
-        self.images = np.append(self.images, new_data.images, axis=0)
-        self.labels = np.append(self.labels, new_data.labels, axis=0)
-
-    def next_batch(self, n):
-        if n > len(self.images):
-            raise ValueError("Batch size exceeds data")
-        indices = np.random.choice(range(len(self.images)), n)
-        return Data(self.images[indices], self.labels[indices])
-
-    def get_count(self):
-        return len(self.images)
-
-
-class Agent:
+class AAgent:
 
 
     def __init__(self, output_digit = False, file_prefix="transformed_inputs/size_%d", digits=[]):
