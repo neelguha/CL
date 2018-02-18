@@ -70,7 +70,7 @@ def loss_align(model1, model2, data):
         for n_source in range(model1.num_hidden):
             loss, accuracy = swap_and_test_neuron(m_dest=model1, m_source=model2, n_dest=n_dest,
                                                   n_source=n_source, data=data)
-            costs[n_dest, n_source] = loss
+            costs[n_dest, n_source] = 1.0 - loss
 
     m1_neurons, m2_neurons= linear_sum_assignment(costs)
 
@@ -78,9 +78,16 @@ def loss_align(model1, model2, data):
 
 
 def covariance_align(model1, model2):
-    raise NotImplementedError("Need to implement")
-    m1_neurons = np.random.choice(range(model1.num_hidden), model1.num_hidden, replace=False)
-    m2_neurons = np.random.choice(range(model2.num_hidden), model2.num_hidden, replace=False)
+    costs = np.zeros((model1.num_hidden, model1.num_hidden))
+
+    for n_dest in range(model1.num_hidden):
+        for n_source in range(model1.num_hidden):
+            dest_w = np.append(model1.get_w1()[:, n_dest], model1.get_b1()[n_dest])
+            source_w = np.append(model2.get_w1()[:, n_source], model2.get_b1()[n_source])
+            cov = np.cov(dest_w, source_w)[0, 1]
+            costs[n_dest, n_source] = 0.0 - cov
+
+    m1_neurons, m2_neurons= linear_sum_assignment(costs)
     return m1_neurons, m2_neurons
 
 
