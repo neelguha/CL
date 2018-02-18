@@ -39,13 +39,16 @@ class Data:
 
 class Agent:
 
-    def __init__(self, type, train_images, train_labels, test_images, test_labels):
+    def __init__(self, type, train_images, train_labels, test_images, test_labels, validation_images,
+                 validation_labels):
         if type == "eo":
             self.train = Data(train_images, self.even_odd_labels(train_labels))
             self.test = Data(test_images, self.even_odd_labels(test_labels))
+            self.validation = Data(validation_images, self.even_odd_labels(validation_labels))
         elif type == "digit":
             self.train = Data(train_images, train_labels)
             self.test = Data(test_images, test_labels)
+            self.validation = Data(validation_images, validation_labels)
 
     def even_odd_labels(self, labels):
         new_labels = []
@@ -70,10 +73,15 @@ class DataController:
         a1_test_images, a1_test_labels, a2_test_images, a2_test_labels = self.sort_data(agent1, agent2,
                                                                                         mnist.test.images,
                                                                                         mnist.test.labels)
+        a1_validation_images, a1_validation_labels, a2_validation_images, a2_validation_labels = \
+            self.sort_data(agent1, agent2, mnist.validation.images, mnist.validation.labels)
 
-        self.a1 = Agent(type, a1_train_images, a1_train_labels, a1_test_images, a1_test_labels)
-        self.a2 = Agent(type, a2_train_images, a2_train_labels, a2_test_images, a2_test_labels)
-        self.all = Agent(type, mnist.train.images, mnist.train.labels, mnist.test.images, mnist.test.labels)
+        self.a1 = Agent(type, a1_train_images, a1_train_labels, a1_test_images, a1_test_labels, a1_validation_images,
+                        a1_validation_labels)
+        self.a2 = Agent(type, a2_train_images, a2_train_labels, a2_test_images, a2_test_labels, a2_validation_images,
+                        a2_validation_labels)
+        self.all = Agent(type, mnist.train.images, mnist.train.labels, mnist.test.images, mnist.test.labels,
+                         mnist.validation.images, mnist.validation.labels)
 
     def sort_data(self, agent1, agent2, images, labels):
         """
