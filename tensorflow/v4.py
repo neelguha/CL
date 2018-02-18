@@ -10,6 +10,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import logging, coloredlogs
 from controller import *
 from realignment import *
+import time
+start_time = time.time()
+
+
 # Constants
 AGENT1 = [0, 1, 2, 3, 4]
 AGENT2 = [5, 6, 7, 8, 9]
@@ -78,6 +82,7 @@ def main():
     logger.info("Realigned M_avg Accuracy=%f Loss=%f" % (a, l))
     # Compute fisher information
     combine(m1, realigned_m2, dc)
+    logger.info("--- %s seconds ---" % (time.time() - start_time))
 
 if __name__ == '__main__':
     main()
