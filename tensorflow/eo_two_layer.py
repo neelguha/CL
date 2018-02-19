@@ -6,6 +6,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import numpy as np
 from termcolor import colored
+import threading
 
 INPUT_SIZE = 784
 OUTPUT_SIZE = 2
@@ -39,7 +40,8 @@ class MnistEO:
             self.b2 = bias_variable([self.out_dim])
 
             self.h1 = tf.nn.relu(tf.matmul(self.x, self.W1) + self.b1)  # hidden layer
-            self.y = tf.matmul(self.h1, self.W2) + self.b2  # output layer
+            self.h_fc1_drop = tf.nn.dropout(self.h1, self.keep_prob)
+            self.y = tf.matmul(self.h_fc1_drop, self.W2) + self.b2  # output layer
 
             self.var_list = [self.W1, self.b1, self.W2, self.b2]
 
@@ -66,10 +68,11 @@ class MnistEO:
         with self.g.as_default():
             for iter in range(iters):
                 batch = train.next_batch(200)
-                self.sess.run(self.train_step, feed_dict={self.x: batch.images, self.y_: batch.labels})
+                self.sess.run(self.train_step, feed_dict={self.x: batch.images, self.y_: batch.labels,
+                                                          self.keep_prob: 0.5})
 
             accuracy, loss = self.sess.run([self.accuracy, self.cross_entropy],
-                                           feed_dict={self.x: test.images, self.y_: test.labels})
+                                           feed_dict={self.x: test.images, self.y_: test.labels, self.keep_prob: 1.0})
             self.logger.info("Iters = %d Accuracy = %f Loss = %f" % (iters, accuracy, loss))
         return accuracy, loss
 
@@ -80,7 +83,42 @@ class MnistEO:
         """
         with self.g.as_default():
             return self.sess.run([self.accuracy, self.cross_entropy],
-                                 feed_dict={self.x: data.images, self.y_: data.labels})
+                                 feed_dict={self.x: data.images, self.y_: data.labels, self.keep_prob: 1.0})
+
+    def update_gradient(self, images):
+        with self.g.as_default():
+            im_ind = np.random.randint(images.shape[0])
+            # compute first-order derivatives
+            ders = self.sess.run(tf.gradients(tf.log(self.probs[0, self.class_ind]), self.var_list),
+                                 feed_dict={self.x: images[im_ind:im_ind + 1], self.keep_prob: 1.0})
+            # square the derivatives and add to total
+            for v in range(len(self.F_accum)):
+                self.F_accum[v] += np.square(ders[v])
+
+    def compute_fisher(self, images, num_samples=200):
+        with self.g.as_default():
+            self.global_count = 0
+            # initialize Fisher information for most recent task
+            self.F_accum = []
+            for v in range(len(self.var_list)):
+                self.F_accum.append(np.zeros(self.var_list[v].get_shape().as_list()))
+
+            # sampling a random class from softmax
+            self.probs = tf.nn.softmax(self.y)
+            self.class_ind = tf.to_int32(tf.multinomial(tf.log(self.probs), 1)[0][0])
+
+            for i in range(num_samples):
+                self.update_gradient(images)
+
+            # divide totals by number of samples
+            for v in range(len(self.F_accum)):
+                self.F_accum[v] /= num_samples
+
+    def copy(self):
+        with self.g.as_default():
+            new_m = MnistEO(self.num_hidden, self.logger)
+            new_m.set_vars(w1=self.get_w1(), b1=self.get_b1(), w2=self.get_w2(), b2=self.get_b2())
+            return new_m
 
     def get_w1(self):
         with self.g.as_default():
@@ -125,39 +163,6 @@ class MnistEO:
             if len(b2) > 0:
                 self.sess.run(tf.assign(self.b2, b2))
 
-    def compute_fisher(self, images, num_samples=200):
-        with self.g.as_default():
-            self.logger.info("Computing Fisher...")
-            # initialize Fisher information for most recent task
-            self.F_accum = []
-            for v in range(len(self.var_list)):
-                self.F_accum.append(np.zeros(self.var_list[v].get_shape().as_list()))
-
-            # sampling a random class from softmax
-            probs = tf.nn.softmax(self.y)
-            class_ind = tf.to_int32(tf.multinomial(tf.log(probs), 1)[0][0])
-
-            for i in range(num_samples):
-                # select random input image
-                im_ind = np.random.randint(images.shape[0])
-                # compute first-order derivatives
-                ders = self.sess.run(tf.gradients(tf.log(probs[0, class_ind]), self.var_list),
-                                feed_dict={self.x: images[im_ind:im_ind + 1]})
-                # square the derivatives and add to total
-                for v in range(len(self.F_accum)):
-                    self.F_accum[v] += np.square(ders[v])
-
-            # divide totals by number of samples
-            for v in range(len(self.F_accum)):
-                self.F_accum[v] /= num_samples
-            self.logger.info("Fisher computed!")
-
-    def copy(self):
-        with self.g.as_default():
-            new_m = MnistEO(self.num_hidden, self.logger)
-            new_m.set_vars(w1=self.get_w1(), b1=self.get_b1(), w2=self.get_w2(), b2=self.get_b2())
-            return new_m
-
 
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev=0.1)
@@ -182,7 +187,7 @@ class Solver():
         m1_fw1 = m1.get_fisher_w1()
         m2_fw1 = m2.get_fisher_w1()
 
-        self.w1 = tf.Variable(m1_w1, dtype=tf.float32)
+        self.w1 = tf.Variable((m1_w1 + m2_w1) / 2.0, dtype=tf.float32)
         self.loss = tf.reduce_sum(tf.multiply(tf.abs(self.w1 - m1_w1), m1_fw1) + tf.multiply(tf.abs(self.w1 - m2_w1),
                                                                                          m2_fw1))
 
@@ -192,7 +197,7 @@ class Solver():
         m1_fb1 = m1.get_fisher_b1()
         m2_fb1 = m2.get_fisher_b1()
 
-        self.b1 = tf.Variable(m1_b1, dtype=tf.float32)
+        self.b1 = tf.Variable((m1_b1 + m2_b1) / 2.0, dtype=tf.float32)
         self.loss = self.loss +  tf.reduce_sum(tf.multiply(tf.abs(self.b1 - m1_b1), m1_fb1) + \
                     tf.multiply(tf.abs(self.b1 - m2_b1), m2_fb1))
 
@@ -203,7 +208,7 @@ class Solver():
         m1_fw2 = m1.get_fisher_w2()
         m2_fw2 = m2.get_fisher_w2()
 
-        self.w2 = tf.Variable(m1_w2, dtype=tf.float32)
+        self.w2 = tf.Variable((m1_w2 + m2_w2) / 2.0, dtype=tf.float32)
         self.loss = self.loss + tf.reduce_sum(tf.multiply(tf.abs(self.w2 - m1_w2), m1_fw2) + tf.multiply(tf.abs(
                 self.w2 - m2_w2),m2_fw2))
 
@@ -214,7 +219,7 @@ class Solver():
         m1_fb2 = m1.get_fisher_b2()
         m2_fb2 = m2.get_fisher_b2()
 
-        self.b2 = tf.Variable(m1_b2, dtype=tf.float32)
+        self.b2 = tf.Variable((m1_b2 + m2_b2) / 2.0, dtype=tf.float32)
         self.loss = self.loss + tf.reduce_sum(tf.multiply(tf.abs(self.b2 - m1_b2), m1_fb2) + \
                     tf.multiply(tf.abs(self.b2 - m2_b2), m2_fb2))
 
@@ -232,3 +237,20 @@ class Solver():
                            w2 = self.sess.run(self.w2),
                            b2 = self.sess.run(self.b2))
         return new_model
+
+
+"""
+'''
+                        for i in range(num_samples):
+                            # select random input image
+                            im_ind = np.random.randint(images.shape[0])
+                            # compute first-order derivatives
+                            ders = self.sess.run(tf.gradients(tf.log(probs[0, class_ind]), self.var_list),
+                                            feed_dict={self.x: images[im_ind:im_ind + 1]})
+                            # square the derivatives and add to total
+                            for v in range(len(self.F_accum)):
+                                self.F_accum[v] += np.square(ders[v])
+                        '''
+
+
+"""
