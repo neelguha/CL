@@ -4,12 +4,12 @@ np.set_printoptions(suppress=True,linewidth=np.nan,threshold=np.nan)
 from termcolor import colored
 
 
-INPUT_SIZE = 50
+INPUT_SIZE = 20
 DIGIT_OUTPUT = True
 OUTPUT_SIZE = 10
 WINDOW_WIDTH = 20
 EPSILON = 0.3
-ITERS = 50
+ITERS = 1
 VERBOSE = False
 
 assert ((DIGIT_OUTPUT == True and OUTPUT_SIZE == 10) or (DIGIT_OUTPUT == False and OUTPUT_SIZE == 2))

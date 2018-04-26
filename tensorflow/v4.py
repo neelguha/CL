@@ -11,6 +11,7 @@ import logging, coloredlogs
 from controller import *
 from realignment import *
 import time
+import threading
 start_time = time.time()
 
 
@@ -37,16 +38,54 @@ flags.DEFINE_string("align", "loss", "Method to align networks")
 
 
 
-def combine(m1, m2, dc):
+def fisher_combine(m1, m2, dc):
     m1.compute_fisher(dc.a1.validation.images)
     m2.compute_fisher(dc.a2.validation.images)
 
     solver = Solver(m1, m2)
     combined_model = solver.get_new_model()
+
+    a, l = combined_model.evaluate(dc.a1.test)
+    logger.info("Combined on a1: Accuracy = %f Loss = %f" % (a, l))
+    a, l = combined_model.evaluate(dc.a2.test)
+    logger.info("Combined on a2: Accuracy = %f Loss = %f" % (a, l))
     a, l = combined_model.evaluate(dc.all.test)
     logger.info("Combined on all: Accuracy = %f Loss = %f" % (a, l))
 
 
+def get_distance(w1_1, b1_1, w2_1, b2_1, w1_2, b1_2, w2_2, b2_2):
+    p1 = np.concatenate((w1_1.flatten(), b1_1.flatten(), w2_1.flatten(), b2_1.flatten()))
+    p2 = np.concatenate((w1_2.flatten(), b1_2.flatten(), w2_2.flatten(), b2_2.flatten()))
+    return np.linalg.norm(p1 - p2)
+
+def sphere_combine(m1, m2, dc):
+    logger.info("----- Looking for intersection -----")
+    starting_dist = get_distance(m1.get_w1(), m1.get_b1(), m1.get_w2(), m1.get_b2(),
+                                 m2.get_w1(), m2.get_b1(), m2.get_w2(), m2.get_b2())
+    logger.info("Starting distance: %f" % starting_dist)
+    models_found = 0
+    for m1_center, m1_radius in zip(m1.e_centers, m1.radii):
+        w1_1, b1_1, w2_1, b2_1 = m1_center
+        for m2_center, m2_radius in zip(m2.e_centers, m2.radii):
+            w1_2, b1_2, w2_2, b2_2 = m2_center
+            dist = get_distance(w1_1, b1_1, w2_1, b2_1, w1_2, b1_2, w2_2, b2_2)
+            logger.info("M1 Radius = %f\tM2 Radius=%f\tCandidate model distance = %f " % (m1_radius, m2_radius, dist))
+            if dist <= m1_radius and dist <= m2_radius:
+                models_found += 1
+                combined_model = MnistEO(FLAGS.hidden, logger)
+                combined_model.set_vars(w1 = (w1_1 + w1_2) / 2.0,
+                                        b1 = (b1_1 + b1_2) / 2.0,
+                                        w2 = (w2_1 + w2_2) / 2.0,
+                                        b2 = (b2_1 + b2_2) / 2.0)
+                logger.info("Found Intersection Model!")
+                a, l = combined_model.evaluate(dc.a1.test)
+                logger.info("Combined on a1: Accuracy = %f Loss = %f" % (a, l))
+                a, l = combined_model.evaluate(dc.a2.test)
+                logger.info("Combined on a2: Accuracy = %f Loss = %f" % (a, l))
+                a, l = combined_model.evaluate(dc.all.test)
+                logger.info("Combined on all: Accuracy = %f Loss = %f" % (a, l))
+    if models_found == 0:
+        logger.info("No models found at intersection.")
 
 def main():
 
@@ -71,17 +110,19 @@ def main():
     logger.info("M2 on all: Accuracy = %f Loss = %f" % (a, l))
 
     avg_model = average_models(m1, m2)
-    a, l = avg_model.evaluate(dc.a2.test)
-    logger.info("M_avg Accuracy=%f Loss=%f" % (a, l))
+    a, l = avg_model.evaluate(dc.all.test)
+    logger.info("M_avg on all Accuracy=%f Loss=%f" % (a, l))
 
     logger.info("Realigning models.")
     realigned_m2 = realign(m1,m2, method="cov")
 
     avg_model = average_models(m1, realigned_m2)
-    a, l = avg_model.evaluate(dc.a2.test)
-    logger.info("Realigned M_avg Accuracy=%f Loss=%f" % (a, l))
-    # Compute fisher information
-    combine(m1, realigned_m2, dc)
+    a, l = avg_model.evaluate(dc.all.test)
+    logger.info("Realigned M_avg on all Accuracy=%f Loss=%f" % (a, l))
+
+    m1.survey(dc.a1.train, sample_size=30, epsilon=0.5)
+    realigned_m2.survey(dc.a2.train, sample_size=30, epsilon=0.5)
+    sphere_combine(m1, realigned_m2, dc)
     logger.info("--- %s seconds ---" % (time.time() - start_time))
 
 if __name__ == '__main__':

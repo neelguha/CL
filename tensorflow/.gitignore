@@ -1,2 +1,7 @@
 *.pyc
 mt_models/*
+alignment/*
+MNIST_data/*
+transformed_inputs/*
+matlab/*
+gzip/*

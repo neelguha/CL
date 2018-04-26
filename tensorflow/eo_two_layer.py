@@ -114,6 +114,65 @@ class MnistEO:
             for v in range(len(self.F_accum)):
                 self.F_accum[v] /= num_samples
 
+
+    def get_circle(self, radius, epsilon, iters, data, base_w1, base_b1, base_w2, base_b2):
+        lm = LossModel(self.num_hidden)
+        in_ep = []
+        for iter in range(iters):
+            # Handle weights
+            w1_points = np.random.normal(loc=0.0, scale=1.0, size=base_w1.shape)
+            b1_points = np.random.normal(loc=0.0, scale=1.0, size=base_b1.shape)
+            w2_points = np.random.normal(loc=0.0, scale=1.0, size=base_w2.shape)
+            b2_points = np.random.normal(loc=0.0, scale=1.0, size=base_b2.shape)
+            normalizer = 1.0 / np.sqrt(np.sum(np.square(w1_points)) +
+                                       np.sum(np.square(b1_points)) +
+                                       np.sum(np.square(w2_points)) +
+                                       np.sum(np.square(b2_points)))
+            new_w1 = base_w1 + w1_points * radius * normalizer
+            new_b1 = base_b1 + b1_points * radius * normalizer
+            new_w2 = base_w2 + w2_points * radius * normalizer
+            new_b2 = base_b2 + b2_points * radius * normalizer
+            loss = lm.get_loss(new_w1, new_b1, new_w2, new_b2, data)
+            if loss < epsilon:
+                in_ep.append((new_w1, new_b1, new_w2, new_b2))
+        return in_ep
+
+
+    def get_distance(self, w1_1, b1_1, w2_1, b2_1, w1_2, b1_2, w2_2, b2_2):
+        p1 = np.concatenate((w1_1.flatten(), b1_1.flatten(), w2_1.flatten(), b2_1.flatten()))
+        p2 = np.concatenate((w1_2.flatten(), b1_2.flatten(), w2_2.flatten(), b2_2.flatten()))
+        return np.linalg.norm(p1 - p2)
+
+    def survey(self, data, sample_size, epsilon = 0.5):
+        self.logger.info("Beginning survey")
+        base_w1 = self.get_w1()
+        base_b1 = self.get_b1()
+        base_w2 = self.get_w2()
+        base_b2 = self.get_b2()
+        cutoff = 0.75
+        radius = 30.0
+        self.e_centers =  []
+        self.radii = []
+        num_hops = 5
+        candidate_centers = [(base_w1, base_b1, base_w2, base_b2)]
+        while len(candidate_centers) > 0:
+            base_w1, base_b1, base_w2, base_b2 = candidate_centers.pop()
+            in_ep = self.get_circle(radius, epsilon, sample_size, data, base_w1, base_b1, base_w2, base_b2)
+            proportion = len(in_ep) *1.0 / sample_size
+            #self.logger.info("Radius = %f\tProportion = %f" % (radius, len(in_ep) * 1.0 / sample_size))
+            if proportion < cutoff:
+                continue
+            self.e_centers.append((base_w1, base_b1, base_w2, base_b2))
+            self.radii.append(radius)
+            num_hops = num_hops - 1.0
+            if num_hops > 0.0:
+                for new_w1, new_b1, new_w2, new_b2 in in_ep:
+                    candidate_centers.append((new_w1, new_b1, new_w2, new_b2))
+        self.logger.info("Found %d centers" % len(self.e_centers))
+
+    def get_neuron_values(self, data):
+        return self.sess.run(self.h1, feed_dict={self.x: data.images, self.y_: data.labels, self.keep_prob: 1.0})
+
     def copy(self):
         with self.g.as_default():
             new_m = MnistEO(self.num_hidden, self.logger)
@@ -172,6 +231,42 @@ def bias_variable(shape):
     initial = tf.constant(0.1, shape=shape)
     return tf.Variable(initial)
 
+class LossModel:
+
+    def __init__(self, num_hidden):
+        self.g = tf.Graph()
+        with self.g.as_default():
+            self.sess = tf.Session()
+            self.in_dim = int(INPUT_SIZE)
+            self.out_dim = int(OUTPUT_SIZE)
+            self.num_hidden = num_hidden
+
+            # Create the model
+            self.x = tf.placeholder(tf.float32, [None, 784])  # input placeholder
+            self.y_ = tf.placeholder(tf.float32, [None, self.out_dim])
+            self.keep_prob = tf.placeholder(tf.float32)
+
+            # simple 2-layer network
+            self.W1 = tf.placeholder(tf.float32, [self.in_dim, self.num_hidden])
+            self.b1 = tf.placeholder(tf.float32, [self.num_hidden])
+
+            self.W2 = tf.placeholder(tf.float32, [self.num_hidden, self.out_dim])
+            self.b2 = tf.placeholder(tf.float32, [self.out_dim])
+
+            self.h1 = tf.nn.relu(tf.matmul(self.x, self.W1) + self.b1)  # hidden layer
+            self.y = tf.matmul(self.h1, self.W2) + self.b2  # output layer
+
+            self.var_list = [self.W1, self.b1, self.W2, self.b2]
+
+            # vanilla single-task loss
+            self.cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.y_, logits=self.y))
+            self.sess.run(tf.global_variables_initializer())
+
+    def get_loss(self, w1, b1, w2, b2, data):
+        fd = {self.x: data.images, self.y_: data.labels, self.W1: w1, self.b1: b1, self.W2: w2, self.b2: b2}
+        with self.g.as_default():
+            return self.sess.run(self.cross_entropy,feed_dict=fd)
+
 
 class Solver():
 
@@ -188,7 +283,7 @@ class Solver():
         m2_fw1 = m2.get_fisher_w1()
 
         self.w1 = tf.Variable((m1_w1 + m2_w1) / 2.0, dtype=tf.float32)
-        self.loss = tf.reduce_sum(tf.multiply(tf.abs(self.w1 - m1_w1), m1_fw1) + tf.multiply(tf.abs(self.w1 - m2_w1),
+        self.loss = tf.reduce_sum(tf.multiply(tf.square(self.w1 - m1_w1), m1_fw1) + tf.multiply(tf.abs(self.w1 - m2_w1),
                                                                                          m2_fw1))
 
         # Add b1 to loss
@@ -198,7 +293,7 @@ class Solver():
         m2_fb1 = m2.get_fisher_b1()
 
         self.b1 = tf.Variable((m1_b1 + m2_b1) / 2.0, dtype=tf.float32)
-        self.loss = self.loss +  tf.reduce_sum(tf.multiply(tf.abs(self.b1 - m1_b1), m1_fb1) + \
+        self.loss = self.loss +  tf.reduce_sum(tf.multiply(tf.square(self.b1 - m1_b1), m1_fb1) + \
                     tf.multiply(tf.abs(self.b1 - m2_b1), m2_fb1))
 
         # Add w2 to loss
@@ -209,7 +304,7 @@ class Solver():
         m2_fw2 = m2.get_fisher_w2()
 
         self.w2 = tf.Variable((m1_w2 + m2_w2) / 2.0, dtype=tf.float32)
-        self.loss = self.loss + tf.reduce_sum(tf.multiply(tf.abs(self.w2 - m1_w2), m1_fw2) + tf.multiply(tf.abs(
+        self.loss = self.loss + tf.reduce_sum(tf.multiply(tf.square(self.w2 - m1_w2), m1_fw2) + tf.multiply(tf.abs(
                 self.w2 - m2_w2),m2_fw2))
 
         # Add b2 to loss
@@ -220,7 +315,7 @@ class Solver():
         m2_fb2 = m2.get_fisher_b2()
 
         self.b2 = tf.Variable((m1_b2 + m2_b2) / 2.0, dtype=tf.float32)
-        self.loss = self.loss + tf.reduce_sum(tf.multiply(tf.abs(self.b2 - m1_b2), m1_fb2) + \
+        self.loss = self.loss + tf.reduce_sum(tf.multiply(tf.square(self.b2 - m1_b2), m1_fb2) + \
                     tf.multiply(tf.abs(self.b2 - m2_b2), m2_fb2))
 
 
@@ -238,19 +333,3 @@ class Solver():
                            b2 = self.sess.run(self.b2))
         return new_model
 
-
-"""
-'''
-                        for i in range(num_samples):
-                            # select random input image
-                            im_ind = np.random.randint(images.shape[0])
-                            # compute first-order derivatives
-                            ders = self.sess.run(tf.gradients(tf.log(probs[0, class_ind]), self.var_list),
-                                            feed_dict={self.x: images[im_ind:im_ind + 1]})
-                            # square the derivatives and add to total
-                            for v in range(len(self.F_accum)):
-                                self.F_accum[v] += np.square(ders[v])
-                        '''
-
-
-"""

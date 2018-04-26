@@ -70,7 +70,7 @@ def loss_align(model1, model2, data):
         for n_source in range(model1.num_hidden):
             loss, accuracy = swap_and_test_neuron(m_dest=model1, m_source=model2, n_dest=n_dest,
                                                   n_source=n_source, data=data)
-            costs[n_dest, n_source] = 1.0 - loss
+            costs[n_dest, n_source] = loss
 
     m1_neurons, m2_neurons= linear_sum_assignment(costs)
 
@@ -90,9 +90,6 @@ def covariance_align(model1, model2):
     m1_neurons, m2_neurons= linear_sum_assignment(costs)
     return m1_neurons, m2_neurons
 
-
-
-
 def swap_and_test_neuron(m_dest, m_source, n_dest, n_source, data, verbose=False):
     """
     Takes the n_source neuron in m_source and inserts in place of the n_dest neuron in m_dest. Evaluates the resuls
@@ -109,15 +106,6 @@ def swap_and_test_neuron(m_dest, m_source, n_dest, n_source, data, verbose=False
     b1_orig = m_dest.get_b1()
     w2_orig = m_dest.get_w2()
 
-    '''new_w1 = m_dest.get_w1()
-    new_w1[:, n_dest] = m_source.get_w1()[:, n_source]
-    new_b1 = m_dest.get_b1()
-    new_b1[n_dest] = m_source.get_b1()[n_source]
-
-    new_w2 = m_dest.get_w2()[:]
-    new_w2[n_dest, :] = m_source.get_w2()[n_source, :]
-
-    m_dest.set_vars(w1=new_w1, b1=new_b1, w2=new_w2)'''
     switch_neurons(m_dest, m_source, n_dest, n_source)
     loss, accuracy = m_dest.evaluate(data)
     m_dest.set_vars(w1=w1_orig, b1=b1_orig, w2=w2_orig)

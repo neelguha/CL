@@ -2,8 +2,13 @@
 In order to simplify the structure of the code, any experiment will rely on this code here.
 
 """
+import os
+import tensorflow as tf
+tf.logging.set_verbosity(tf.logging.ERROR)
 from tensorflow.examples.tutorials.mnist import input_data
 from data import *
+from scipy import io as spio
+from copy import deepcopy
 
 
 '''
@@ -31,7 +36,7 @@ class Data:
     def next_batch(self, n):
         if n > len(self.images):
             raise ValueError("Batch size exceeds data")
-        indices = np.random.choice(range(len(self.images)), n)
+        indices = np.random.choice(list(range(len(self.images))), int(n))
         return Data(self.images[indices], self.labels[indices])
 
     def get_count(self):
@@ -107,4 +112,69 @@ class DataController:
                 a2_data.append(image)
         return np.array(a1_data), np.array(a1_labels), np.array(a2_data), np.array(a2_labels)
 
+    def sample_by_agent(self, agent, count):
+        if agent == 1:
+            sample_indices = np.random.choice(range(len(self.a1.validation.images)), count, replace=False)
+            return Data(self.a1.validation.images[sample_indices], self.a1.validation.labels[sample_indices])
+        if agent == 2:
+            sample_indices = np.random.choice(range(len(self.a2.validation.images)), count, replace=False)
+            return Data(self.a2.validation.images[sample_indices], self.a2.validation.labels[sample_indices])
 
+
+class MTData():
+    '''
+
+    '''
+
+    def __init__(self):
+        mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+        self.mnist1_train = Data(mnist.train.images, mnist.train.labels)
+        self.all_train = Data(mnist.train.images, mnist.train.labels)
+        self.mnist1_test = Data(mnist.test.images, mnist.test.labels)
+        self.all_test = Data(mnist.test.images, mnist.test.labels)
+
+        mnist2 = self.permute_mnist(mnist)
+        self.mnist2_train = Data(mnist2.train.images, mnist2.train.labels)
+        self.mnist2_test = Data(mnist2.test.images, mnist2.test.labels)
+
+        self.all_train.add_data_obj(self.mnist2_train)
+        self.all_test.add_data_obj(self.mnist2_test)
+
+    def permute_mnist(self, mnist):
+        np.random.seed(10)
+        perm_inds = list(range(mnist.train.images.shape[1]))
+        np.random.shuffle(perm_inds)
+        mnist2 = deepcopy(mnist)
+        sets = ["train", "validation", "test"]
+        for set_name in sets:
+            this_set = getattr(mnist2, set_name)  # shallow copy
+            this_set._images = np.transpose(np.array([this_set.images[:, c] for c in perm_inds]))
+        return mnist2
+
+
+
+def load_letters(self):
+    emnist = spio.loadmat("matlab/emnist-digits.mat")
+    x_train = emnist["dataset"][0][0][0][0][0][0]
+    x_train = x_train.astype(np.float32)
+
+    # load training labels
+    y_train = emnist["dataset"][0][0][0][0][0][1]
+
+    # load test dataset
+    x_test = emnist["dataset"][0][0][1][0][0][0]
+    x_test = x_test.astype(np.float32)
+
+    # load test labels
+    y_test = emnist["dataset"][0][0][1][0][0][1]
+
+    x_train /= 255
+    x_test /= 255
+
+    train_labels = y_train
+    test_labels = y_test
+
+    y_train = self.get_one_hot(min_val=1, labels=train_labels)
+    y_test = self.get_one_hot(min_val=1, labels=test_labels)
+    letters_train = Data(x_train, y_train)
+    letters_test = Data(x_test, y_test)
