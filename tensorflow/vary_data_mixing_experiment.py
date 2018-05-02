@@ -55,7 +55,7 @@ def main():
 
     mt = MTData()
     architecture = [FLAGS.hidden, NUM_OUTPUT]
-    gamma_vals = np.arange(1.0, 0.45, 0-.025)
+    gamma_vals = np.arange(1.0, 0.45, 0-.05)
 
     for gamma in tqdm(gamma_vals):
         for trial in range(5):
@@ -169,7 +169,7 @@ def main():
             table.append(["Tuned Aggregate", accuracy, loss])
             results["Tuned Aggregate"] = (accuracy, loss)
 
-            #print(tabulate(table, headers=["Exp", "Accuracy", "Loss"], tablefmt="fancy_grid"))
+            print("Gamma=%f Trial=%d. Tuned Aggregate=%f" % accuracy)
             np.save("experimental_results/data_mixing/%f_%d" % (gamma, trial), results)
 
 
