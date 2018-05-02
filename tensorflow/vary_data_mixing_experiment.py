@@ -169,7 +169,7 @@ def main():
             table.append(["Tuned Aggregate", accuracy, loss])
             results["Tuned Aggregate"] = (accuracy, loss)
 
-            print("Gamma=%f Trial=%d. Tuned Aggregate=%f" % (gamma, trial, accuracy)
+            print("Gamma=%f Trial=%d. Tuned Aggregate=%f" % (gamma, trial, accuracy))
             np.save("experimental_results/data_mixing/%f_%d" % (gamma, trial), results)
 
 
