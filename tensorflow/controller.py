@@ -127,18 +127,37 @@ class MTData():
     '''
 
     def __init__(self):
-        mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
-        self.mnist1_train = Data(mnist.train.images, mnist.train.labels)
-        self.all_train = Data(mnist.train.images, mnist.train.labels)
-        self.mnist1_test = Data(mnist.test.images, mnist.test.labels)
-        self.all_test = Data(mnist.test.images, mnist.test.labels)
+        # gamma is the mixing factor
+        self.mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
-        mnist2 = self.permute_mnist(mnist)
-        self.mnist2_train = Data(mnist2.train.images, mnist2.train.labels)
-        self.mnist2_test = Data(mnist2.test.images, mnist2.test.labels)
+    def mix_data(self, gamma):
+        raw_mnist_train = Data(self.mnist.train.images, self.mnist.train.labels)
+        raw_mnist_test = Data(self.mnist.test.images, self.mnist.test.labels)
+        self.all_train = raw_mnist_train
+        self.all_test = raw_mnist_test
 
-        self.all_train.add_data_obj(self.mnist2_train)
-        self.all_test.add_data_obj(self.mnist2_test)
+        self.mnist1_train = self.sample_gamma(gamma, raw_mnist_train)
+        self.mnist1_test = self.sample_gamma(gamma, raw_mnist_test)
+        self.mnist2_train = self.sample_gamma(1.0 - gamma, raw_mnist_train)
+        self.mnist2_test = self.sample_gamma(1.0 - gamma, raw_mnist_test)
+
+
+        mnist2 = self.permute_mnist(self.mnist)
+        mnist_permute_train = Data(mnist2.train.images, mnist2.train.labels)
+        mnist_permute_test = Data(mnist2.test.images, mnist2.test.labels)
+        self.all_train.add_data_obj(mnist_permute_train)
+        self.all_test.add_data_obj(mnist_permute_test)
+
+        self.mnist1_train.add_data_obj(self.sample_gamma(1.0 - gamma, mnist_permute_train))
+        self.mnist1_test.add_data_obj(self.sample_gamma(1.0 - gamma, mnist_permute_test))
+        self.mnist2_train.add_data_obj(self.sample_gamma(gamma, mnist_permute_train))
+        self.mnist2_test.add_data_obj(self.sample_gamma(gamma, mnist_permute_test))
+
+
+    def sample_gamma(self, gamma, data):
+        sample_size = int(data.get_count()*gamma)
+        indices = np.random.choice(np.arange(data.get_count()), sample_size, replace=True)
+        return Data(data.images[indices], data.labels[indices])
 
     def permute_mnist(self, mnist):
         np.random.seed(10)

@@ -97,43 +97,25 @@ class AgentModel:
             self.train_second = optimizer.minimize(self.cross_entropy, var_list=[w2, b2])
             self.sess.run(tf.global_variables_initializer())
 
-    def train_model(self, train, test, iters=2000):
-
+    def train_model(self, train, iters=2000):
         with self.g.as_default():
             for iter in range(iters):
                 batch = train.next_batch(200)
                 fd = {self.x: batch.images, self.y_: batch.labels, self.keep_prob: 0.5}
                 self.sess.run(self.train_step, feed_dict= fd)
-            accuracy, loss = self.sess.run([self.accuracy, self.cross_entropy], feed_dict= fd)
-        return accuracy, loss
 
-    def train_second_layer(self, train, test, iters=1000):
+    def train_second_layer(self, train, iters=1000):
         with self.g.as_default():
             for iter in range(iters):
                 batch = train.next_batch(200)
                 self.sess.run(self.train_second, feed_dict={
                     self.x: batch.images, self.y_: batch.labels, self.keep_prob: 1.0
                 })
-                if iter % 100 == 0:
-                    accuracy, loss = self.sess.run([self.accuracy, self.cross_entropy],
-                                                   feed_dict={
-                                                       self.x: test.images, self.y_: test.labels, self.keep_prob:1.0})
-                    #print "Iters = %d Accuracy = %f Loss = %f" % (iter, accuracy, loss)
-            accuracy, loss = self.sess.run([self.accuracy, self.cross_entropy],
-                                           feed_dict={self.x: test.images, self.y_: test.labels, self.keep_prob: 1.0})
-
-            #print "Iters = %d Accuracy = %f Loss = %f" % (iters, accuracy, loss)
-        return accuracy, loss
-
 
     def evaluate(self, data):
-        """
-        :param data: data to evaluate
-        :return: (accuracy, loss)
-        """
         with self.g.as_default():
-            return self.sess.run([self.accuracy, self.cross_entropy],
-                                 feed_dict={self.x: data.images, self.y_: data.labels, self.keep_prob: 1.0})
+            fd = {self.x: data.images, self.y_: data.labels, self.keep_prob: 1.0}
+            return self.sess.run([self.accuracy, self.cross_entropy], feed_dict=fd)
 
 
     def copy(self):
@@ -190,15 +172,12 @@ class AgentModel:
                 new_b1[n_index] = new_neuron_b
                 new_w2[n_index, :] = new_out_w
                 loss = lm.get_loss(new_w1, new_b1, new_w2, b2, data)
-                #self.logger.info("Iter-%d, Loss = %f" % (iter, loss))
                 if loss < epsilon:
                     succeed += 1.0
             prop = succeed / sample_size
-            #self.logger.info("Neuron-%d Radius=%d Prop = %f" % (n_index, radius, prop))
             if prop >= delta:
                 radius += 1.0
             else:
-                #self.logger.info("Neuron-%d Final Radius=%d" % (n_index, radius - 1))
                 radius = radius - 1.0
                 break
         return radius
@@ -232,9 +211,7 @@ class AgentModel:
                 if loss < epsilon:
                     succeed += 1.0
             prop = succeed / sample_size
-            #self.logger.info("N-%d R = %f, Prop = %f" % (n_index, radius, prop))
             if prop > delta:
                 radius += 0.1
             else:
-                # self.logger.info("Neuron-%d Final Radius=%d" % (n_index, radius - 1))
                 return radius - 0.1
